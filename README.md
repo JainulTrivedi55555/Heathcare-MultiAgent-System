@@ -45,6 +45,7 @@ coordinator.handle_patient(patient_name, patient_symptoms)
 
 Output: 
 Patient: John Doe reports symptoms: I have fever and cough for 3 days.
+
 Diagnosis: The patient likely has a viral respiratory infection such as the common cold or flu.
 
 Treatment: Recommend rest, hydration, over-the-counter fever reducers, and monitoring symptoms. If symptoms worsen, consult a healthcare professional.
@@ -54,15 +55,25 @@ Treatment: Recommend rest, hydration, over-the-counter fever reducers, and monit
 Project Structure: 
 
 healthcare-multi-agent-system/
+
 │
+
 ├── agents/
+
 │   ├── base_agent.py          # Base class for agents with OpenAI API calls
+
 │   ├── symptom_agent.py       # Symptom analysis agent
+
 │   └── treatment_agent.py     # Treatment recommendation agent
+
 │
+
 ├── coordinator.py             # Orchestrates agent communication
+
 ├── main.py                   # Entry point to run the system
+
 ├── test_openai.py            # Simple script to test OpenAI API key
+
 └── README.md                 # Project documentation
 
 
