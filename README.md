@@ -45,7 +45,6 @@ coordinator.handle_patient(patient_name, patient_symptoms)
 
 Output: 
 Patient: John Doe reports symptoms: I have fever and cough for 3 days.
-
 Diagnosis: The patient likely has a viral respiratory infection such as the common cold or flu.
 
 Treatment: Recommend rest, hydration, over-the-counter fever reducers, and monitoring symptoms. If symptoms worsen, consult a healthcare professional.
