@@ -31,73 +31,69 @@ class HealthcareCoordinator:
         logger.info("All 5 agents initialized successfully.")
 
     def _extract_urgency(self, diagnosis_text: str) -> str:
-        """Extract urgency level without false positives from medical terms like 'high fever'."""
+        """Extract urgency level from symptom checker output."""
         text_lower = diagnosis_text.lower()
-        if any(p in text_lower for p in ["urgency: emergency", "seek immediate", "call 911", "emergency room"]):
-            return "Emergency"
-        if any(p in text_lower for p in ["urgency: high", "high urgency", "seek urgent"]):
-            return "High"
-        if any(p in text_lower for p in ["urgency: moderate", "moderate urgency"]):
-            return "Moderate"
         if "emergency" in text_lower:
             return "Emergency"
-        if "urgent" in text_lower:
+        elif "high" in text_lower:
             return "High"
-        if "moderate" in text_lower:
+        elif "moderate" in text_lower:
             return "Moderate"
         return "Low"
 
     def _extract_diagnoses(self, diagnosis_text: str) -> list:
         """
-        Parse ALL possible diagnoses from symptom checker output.
-        Handles multiple LLM output formats without capping results.
-        Filters out non-diagnosis bullets (recommendations, observations etc.)
+        Parse possible diagnoses from symptom checker output.
+        Handles all Groq/Llama output formats including nested bullet lists,
+        bold markdown headers, numbered lists, and inline comma-separated lists.
         """
-        # Step 1: Try to isolate diagnosis section first, then extract from it
-        # This prevents picking up recommendation bullets as diagnoses
-        section_patterns = [
-            r"[Pp]ossible [Dd]iagnos[ei]s[:\s]*\*?\*?\n((?:[\-\*•\d].*\n?)+)",
-            r"\*\*[Pp]ossible [Dd]iagnos[ei]s[:\s]*\*\*\n((?:[\-\*•\d].*\n?)+)",
-            r"diagnoses are[:\s]*\n((?:[\-\*•\d].*\n?)+)",
-        ]
-        for pattern in section_patterns:
-            match = re.search(pattern, diagnosis_text, re.IGNORECASE)
-            if match:
-                section = match.group(1)
-                items = re.findall(r"^[\-\*•]\s+(.+)$|^\d+[\.\)]\s+(.+)$", section, re.MULTILINE)
-                results = [(a or b).strip() for a, b in items if (a or b).strip()]
-                if results:
-                    return results
+        # Step 1: Find 'Possible Diagnoses' section and grab nested items under it
+        # Handles: * **Possible Diagnoses:** followed by + Item or - Item or 1. Item
+        section_match = re.search(
+            r"\*{0,2}[Pp]ossible\s+[Dd]iagnos[ei]s[:\s]*\*{0,2}\s*\n((?:[ \t]*[\+\-\*•\d].*\n?)+)",
+            diagnosis_text, re.IGNORECASE
+        )
+        if section_match:
+            section = section_match.group(1)
+            items = re.findall(r"[ \t]*[\+\-\*•][ \t]+(.+)|[ \t]*\d+[\.\)][ \t]+(.+)", section)
+            results = []
+            for a, b in items:
+                val = (a or b).strip().strip("*").strip()
+                if val and len(val) > 1 and not any(
+                    kw in val.lower() for kw in ["urgency", "level", "moderate", "high", "low", "emergency"]
+                ):
+                    results.append(val)
+            if results:
+                return results
 
         # Step 2: Inline format 'Possible diagnoses: X, Y, Z'
-        match = re.search(r"[Pp]ossible diagnos[ei]s[:\s]+([^\n]+)", diagnosis_text)
+        match = re.search(r"[Pp]ossible diagnos[ei]s[:\s]+([^\n\*]+)", diagnosis_text)
         if match:
-            raw = match.group(1)
-            raw = re.sub(r"[Uu]rgency.*", "", raw, flags=re.IGNORECASE)
-            items = [d.strip().strip(".").strip(",") for d in raw.split(",") if d.strip()]
-            if items and "are" not in items[0].lower() and len(items[0]) < 50:
+            raw = re.sub(r"[Uu]rgency.*", "", match.group(1), flags=re.IGNORECASE)
+            items = [d.strip().strip(".").strip(",").strip("*") for d in raw.split(",") if d.strip()]
+            if items and "are" not in items[0].lower() and len(items[0]) < 60:
                 return items
 
-        # Step 3: Numbered list anywhere in text
+        # Step 3: Numbered list
         numbered = re.findall(r"^\d+[\.\)]\s+(.+)$", diagnosis_text, re.MULTILINE)
         if numbered:
-            diagnoses = [n.strip() for n in numbered if len(n.strip()) < 60]
-            if diagnoses:
-                return diagnoses
+            clean = [n.strip().strip("*") for n in numbered
+                     if 2 < len(n.strip()) < 60
+                     and not any(kw in n.lower() for kw in ["urgency", "moderate", "high", "low"])]
+            if clean:
+                return clean
 
-        # Step 4: Bullet list — filter out recommendation/observation sentences
-        # Diagnoses are short condition names, not full sentences
-        skip_keywords = ["rest", "hydrat", "consult", "monitor", "seek", "avoid",
-                         "take", "fever present", "symptom", "recommend", "if you"]
-        bullets = re.findall(r"^[\-\*•]\s+(.+)$", diagnosis_text, re.MULTILINE)
+        # Step 4: Flat bullet list — strict filter to exclude recommendations
+        skip = ["rest", "hydrat", "consult", "monitor", "seek", "avoid", "take ",
+                "fever", "symptom", "recommend", "if you", "stay", "urgency",
+                "observation", "next step", "level", "report", "moderate", "high", "low"]
+        bullets = re.findall(r"^[ \t]*[\+\-\*•][ \t]+(.+)$", diagnosis_text, re.MULTILINE)
         if bullets:
-            diagnoses = [
-                b.strip() for b in bullets
-                if len(b.strip()) < 50
-                and not any(kw in b.lower() for kw in skip_keywords)
-            ]
-            if diagnoses:
-                return diagnoses
+            clean = [b.strip().strip("*").strip() for b in bullets
+                     if 2 < len(b.strip()) < 60
+                     and not any(kw in b.lower() for kw in skip)]
+            if clean:
+                return clean
 
         return ["General condition — consult a doctor"]
 
@@ -144,12 +140,9 @@ class HealthcareCoordinator:
 
             # ── Step 4: Appointment Scheduling ────────────────────────────────
             logger.info(f"[Step 4] Running AppointmentSchedulerAgent for {patient_name}...")
-            primary_diagnosis = results["diagnoses"][0] if results["diagnoses"] else "General consultation"
-            all_diagnoses_str = ", ".join(results["diagnoses"][:4])
+            primary_diagnosis = top_diagnoses[0] if top_diagnoses else "General consultation"
             appointment = self.scheduler_agent.run(
-                f"Schedule an appointment for patient '{patient_name}'. "
-                f"Primary diagnosis: '{primary_diagnosis}'. "
-                f"All possible diagnoses: {all_diagnoses_str}. "
+                f"Schedule an appointment for patient '{patient_name}' diagnosed with '{primary_diagnosis}'. "
                 f"Urgency level is '{results['urgency']}'."
             )
             results["appointment"] = appointment
@@ -158,8 +151,7 @@ class HealthcareCoordinator:
             logger.info(f"[Step 5] Running PatientFollowUpAgent for {patient_name}...")
             followup = self.followup_agent.run(
                 f"Create a follow-up care plan for patient '{patient_name}' "
-                f"diagnosed with '{primary_diagnosis}'. "
-                f"Other possible conditions: {', '.join(results['diagnoses'][1:4])}."
+                f"diagnosed with '{primary_diagnosis}'."
             )
             results["followup"] = followup
 
