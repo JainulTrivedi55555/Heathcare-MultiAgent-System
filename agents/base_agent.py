@@ -1,8 +1,13 @@
-from typing import List, Dict, Callable, Any
+import os
 import json
 import re
-import os
+import logging
+from typing import List, Dict, Callable, Any, Optional
 from openai import OpenAI
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+
 
 class Tool:
     def __init__(self, name: str, func: Callable, description: str):
@@ -10,69 +15,113 @@ class Tool:
         self.func = func
         self.description = description
 
-    def execute(self, **kwargs):
+    def execute(self, **kwargs) -> str:
         return self.func(**kwargs)
 
+
 def tool(func: Callable) -> Tool:
-    return Tool(func.__name__, func, func.__doc__)
+    """Decorator to convert a function into a Tool."""
+    return Tool(func.__name__, func, func.__doc__ or "No description provided.")
+
 
 class BaseAgent:
+    """
+    Base class for all healthcare agents.
+    Implements a ReAct-style (Reasoning + Acting) loop:
+    - The LLM reasons about the task
+    - Optionally calls tools via <tool_call> XML tags
+    - Observes tool results and continues until a final answer is produced
+    """
+
+    MAX_ITERATIONS = 5  # Prevent infinite loops
+
     def __init__(self, name: str, tools: List[Tool], system_prompt: str):
         self.name = name
-        self.tools = {tool.name: tool for tool in tools}
+        self.tools = {t.name: t for t in tools}
         self.system_prompt = system_prompt
-        self.conversation_history = []
-        # Initialize OpenAI client with your API key from environment variable
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.conversation_history: List[Dict[str, str]] = []
+        self.logger = logging.getLogger(name)
 
-    def format_tools(self) -> str:
-        tool_descriptions = "\n".join([f"- {t.name}: {t.description}" for t in self.tools.values()])
-        return f"Available tools:\n{tool_descriptions}"
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise EnvironmentError("OPENAI_API_KEY environment variable is not set.")
+        self.client = OpenAI(api_key=api_key)
 
-    def call_openai(self, messages: List[Dict[str, str]]) -> str:
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            temperature=0.2,
-            max_tokens=500,
+    def _format_tools(self) -> str:
+        if not self.tools:
+            return "No tools available."
+        descriptions = "\n".join(
+            [f"- {name}: {t.description}" for name, t in self.tools.items()]
         )
-        return response.choices[0].message.content
+        return (
+            f"Available tools:\n{descriptions}\n\n"
+            "To call a tool, respond with:\n"
+            '<tool_call>{"name": "tool_name", "arguments": {"param": "value"}}</tool_call>'
+        )
 
-    def extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
+    def _call_llm(self, messages: List[Dict[str, str]]) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=600,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            self.logger.error(f"OpenAI API error: {e}")
+            raise
+
+    def _extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
         pattern = r"<tool_call>(.*?)</tool_call>"
         matches = re.findall(pattern, text, re.DOTALL)
         calls = []
         for match in matches:
             try:
                 calls.append(json.loads(match.strip()))
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"Failed to parse tool call: {e}")
         return calls
 
+    def _execute_tools(self, tool_calls: List[Dict[str, Any]]) -> str:
+        results = []
+        for call in tool_calls:
+            tool_name = call.get("name")
+            args = call.get("arguments", {})
+            if tool_name in self.tools:
+                try:
+                    result = self.tools[tool_name].execute(**args)
+                    self.logger.info(f"Tool '{tool_name}' executed successfully.")
+                    results.append({"tool": tool_name, "result": result})
+                except Exception as e:
+                    results.append({"tool": tool_name, "result": f"Error: {str(e)}"})
+            else:
+                results.append({"tool": tool_name, "result": f"Tool '{tool_name}' not found."})
+        return json.dumps(results)
+
     def run(self, user_input: str) -> str:
+        """Run the agent on a given input using the ReAct loop."""
+        self.conversation_history = []  # Reset per run
         self.conversation_history.append({"role": "user", "content": user_input})
-        messages = [{"role": "system", "content": self.system_prompt + "\n\n" + self.format_tools()}]
-        messages.extend(self.conversation_history)
 
-        response = self.call_openai(messages)
-        self.conversation_history.append({"role": "assistant", "content": response})
+        for iteration in range(self.MAX_ITERATIONS):
+            messages = [
+                {"role": "system", "content": self.system_prompt + "\n\n" + self._format_tools()}
+            ]
+            messages.extend(self.conversation_history)
 
-        tool_calls = self.extract_tool_calls(response)
-        if tool_calls:
-            results = []
-            for call in tool_calls:
-                tool_name = call.get("name")
-                args = call.get("arguments", {})
-                if tool_name in self.tools:
-                    try:
-                        result = self.tools[tool_name].execute(**args)
-                    except Exception as e:
-                        result = f"Error executing tool {tool_name}: {str(e)}"
-                    results.append(result)
-                else:
-                    results.append(f"Tool {tool_name} not found.")
-            observation = f"<observation>{json.dumps(results)}</observation>"
-            self.conversation_history.append({"role": "user", "content": observation})
-            return self.run("")
-        else:
-            return response
+            response = self._call_llm(messages)
+            self.conversation_history.append({"role": "assistant", "content": response})
+
+            tool_calls = self._extract_tool_calls(response)
+            if tool_calls:
+                observation = self._execute_tools(tool_calls)
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": f"<observation>{observation}</observation>\nBased on the tool results above, provide your final answer."
+                })
+            else:
+                return response
+
+        self.logger.warning(f"Reached max iterations ({self.MAX_ITERATIONS}). Returning last response.")
+        return self.conversation_history[-1]["content"]
