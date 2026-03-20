@@ -64,7 +64,7 @@ class BaseAgent:
                 model="llama-3.3-70b-versatile",
                 messages=messages,
                 temperature=0.3,
-                max_tokens=600,
+                max_tokens=1024,
             )
             return response.choices[0].message.content.strip()
         except Exception as e:

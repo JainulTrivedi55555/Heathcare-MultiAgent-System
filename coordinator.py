@@ -31,13 +31,19 @@ class HealthcareCoordinator:
         logger.info("All 5 agents initialized successfully.")
 
     def _extract_urgency(self, diagnosis_text: str) -> str:
-        """Extract urgency level from symptom checker output."""
+        """Extract urgency level without false positives from medical terms like 'high fever'."""
         text_lower = diagnosis_text.lower()
+        if any(p in text_lower for p in ["urgency: emergency", "seek immediate", "call 911", "emergency room"]):
+            return "Emergency"
+        if any(p in text_lower for p in ["urgency: high", "high urgency", "seek urgent"]):
+            return "High"
+        if any(p in text_lower for p in ["urgency: moderate", "moderate urgency"]):
+            return "Moderate"
         if "emergency" in text_lower:
             return "Emergency"
-        elif "high" in text_lower:
+        if "urgent" in text_lower:
             return "High"
-        elif "moderate" in text_lower:
+        if "moderate" in text_lower:
             return "Moderate"
         return "Low"
 
@@ -138,9 +144,12 @@ class HealthcareCoordinator:
 
             # ── Step 4: Appointment Scheduling ────────────────────────────────
             logger.info(f"[Step 4] Running AppointmentSchedulerAgent for {patient_name}...")
-            primary_diagnosis = top_diagnoses[0] if top_diagnoses else "General consultation"
+            primary_diagnosis = results["diagnoses"][0] if results["diagnoses"] else "General consultation"
+            all_diagnoses_str = ", ".join(results["diagnoses"][:4])
             appointment = self.scheduler_agent.run(
-                f"Schedule an appointment for patient '{patient_name}' diagnosed with '{primary_diagnosis}'. "
+                f"Schedule an appointment for patient '{patient_name}'. "
+                f"Primary diagnosis: '{primary_diagnosis}'. "
+                f"All possible diagnoses: {all_diagnoses_str}. "
                 f"Urgency level is '{results['urgency']}'."
             )
             results["appointment"] = appointment
@@ -149,7 +158,8 @@ class HealthcareCoordinator:
             logger.info(f"[Step 5] Running PatientFollowUpAgent for {patient_name}...")
             followup = self.followup_agent.run(
                 f"Create a follow-up care plan for patient '{patient_name}' "
-                f"diagnosed with '{primary_diagnosis}'."
+                f"diagnosed with '{primary_diagnosis}'. "
+                f"Other possible conditions: {', '.join(results['diagnoses'][1:4])}."
             )
             results["followup"] = followup
 
