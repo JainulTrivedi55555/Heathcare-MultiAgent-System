@@ -42,18 +42,58 @@ class HealthcareCoordinator:
         return "Low"
 
     def _extract_diagnoses(self, diagnosis_text: str) -> list:
-        """Parse possible diagnoses from symptom checker output."""
-        for line in diagnosis_text.splitlines():
-            if "possible diagnoses:" in line.lower():
-                raw = line.split(":", 1)[1]
-                # Remove urgency info and clean up
-                raw = re.sub(r"urgency.*", "", raw, flags=re.IGNORECASE)
-                return [d.strip().strip(".") for d in raw.split(",") if d.strip()]
-        # Fallback: look for comma-separated list in full text
-        matches = re.findall(r"Possible diagnoses?[:\s]+([^\n.]+)", diagnosis_text, re.IGNORECASE)
-        if matches:
-            return [d.strip() for d in matches[0].split(",")]
-        return ["General condition — see doctor"]
+        """
+        Parse ALL possible diagnoses from symptom checker output.
+        Handles multiple LLM output formats without capping results.
+        Filters out non-diagnosis bullets (recommendations, observations etc.)
+        """
+        # Step 1: Try to isolate diagnosis section first, then extract from it
+        # This prevents picking up recommendation bullets as diagnoses
+        section_patterns = [
+            r"[Pp]ossible [Dd]iagnos[ei]s[:\s]*\*?\*?\n((?:[\-\*•\d].*\n?)+)",
+            r"\*\*[Pp]ossible [Dd]iagnos[ei]s[:\s]*\*\*\n((?:[\-\*•\d].*\n?)+)",
+            r"diagnoses are[:\s]*\n((?:[\-\*•\d].*\n?)+)",
+        ]
+        for pattern in section_patterns:
+            match = re.search(pattern, diagnosis_text, re.IGNORECASE)
+            if match:
+                section = match.group(1)
+                items = re.findall(r"^[\-\*•]\s+(.+)$|^\d+[\.\)]\s+(.+)$", section, re.MULTILINE)
+                results = [(a or b).strip() for a, b in items if (a or b).strip()]
+                if results:
+                    return results
+
+        # Step 2: Inline format 'Possible diagnoses: X, Y, Z'
+        match = re.search(r"[Pp]ossible diagnos[ei]s[:\s]+([^\n]+)", diagnosis_text)
+        if match:
+            raw = match.group(1)
+            raw = re.sub(r"[Uu]rgency.*", "", raw, flags=re.IGNORECASE)
+            items = [d.strip().strip(".").strip(",") for d in raw.split(",") if d.strip()]
+            if items and "are" not in items[0].lower() and len(items[0]) < 50:
+                return items
+
+        # Step 3: Numbered list anywhere in text
+        numbered = re.findall(r"^\d+[\.\)]\s+(.+)$", diagnosis_text, re.MULTILINE)
+        if numbered:
+            diagnoses = [n.strip() for n in numbered if len(n.strip()) < 60]
+            if diagnoses:
+                return diagnoses
+
+        # Step 4: Bullet list — filter out recommendation/observation sentences
+        # Diagnoses are short condition names, not full sentences
+        skip_keywords = ["rest", "hydrat", "consult", "monitor", "seek", "avoid",
+                         "take", "fever present", "symptom", "recommend", "if you"]
+        bullets = re.findall(r"^[\-\*•]\s+(.+)$", diagnosis_text, re.MULTILINE)
+        if bullets:
+            diagnoses = [
+                b.strip() for b in bullets
+                if len(b.strip()) < 50
+                and not any(kw in b.lower() for kw in skip_keywords)
+            ]
+            if diagnoses:
+                return diagnoses
+
+        return ["General condition — consult a doctor"]
 
     def handle_patient(self, patient_name: str, symptoms: str) -> Dict[str, Any]:
         """
@@ -82,15 +122,14 @@ class HealthcareCoordinator:
             results["diagnoses"] = self._extract_diagnoses(diagnosis)
             logger.info(f"Diagnoses found: {results['diagnoses']}")
 
-            # ── Step 2: Medical Knowledge (top 2 diagnoses) ───────────────────
-            top_diagnoses = results["diagnoses"][:2]
-            for disease in top_diagnoses:
+            # ── Step 2: Medical Knowledge (ALL diagnoses) ────────────────────
+            for disease in results["diagnoses"]:
                 logger.info(f"[Step 2] Running MedicalKnowledgeAgent for: {disease}")
                 info = self.knowledge_agent.run(f"Tell me about {disease} in detail.")
                 results["medical_knowledge"][disease] = info
 
-            # ── Step 3: Treatment Recommendations (top 2 diagnoses) ───────────
-            for disease in top_diagnoses:
+            # ── Step 3: Treatment Recommendations (ALL diagnoses) ─────────────
+            for disease in results["diagnoses"]:
                 logger.info(f"[Step 3] Running TreatmentRecommendationAgent for: {disease}")
                 treatment = self.treatment_agent.run(
                     f"What is the treatment plan for a patient diagnosed with {disease}?"

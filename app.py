@@ -1,287 +1,153 @@
 import streamlit as st
-import time
+from dotenv import load_dotenv
+load_dotenv()
 from coordinator import HealthcareCoordinator
 
 # ─────────────────────────────────────────────
 # Page Config
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="MedAgent AI — Healthcare Multi-Agent System",
+    page_title="MedAgent AI",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ─────────────────────────────────────────────
-# Custom CSS — Clinical Precision Aesthetic
+# CSS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600&display=swap');
 
-/* Global */
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-    color: #1a1f2e;
-}
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+.stApp { background: #f0f4f8; }
 
-/* Background */
-.stApp {
-    background: #f4f6fb;
-}
+[data-testid="stSidebar"] { background: #0a1628; }
+[data-testid="stSidebar"] * { color: #a8bfd4 !important; }
+[data-testid="stSidebar"] strong { color: #e2eaf3 !important; }
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: linear-gradient(175deg, #0f1b2d 0%, #1a2e4a 60%, #0d2137 100%);
-    border-right: none;
+.agent-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 6px 0;
 }
-[data-testid="stSidebar"] * {
-    color: #c8d8eb !important;
-}
-[data-testid="stSidebar"] h1, 
-[data-testid="stSidebar"] h2, 
-[data-testid="stSidebar"] h3 {
-    color: #ffffff !important;
-}
+.agent-card-name { font-size: 0.82rem; font-weight: 600; color: #7dd3fc !important; }
+.agent-card-desc { font-size: 0.73rem; color: #64748b !important; margin-top: 2px; line-height: 1.4; }
 
-/* Main header */
-.main-header {
-    background: linear-gradient(135deg, #0f1b2d 0%, #1a3a5c 100%);
-    color: white;
-    padding: 2.5rem 3rem;
+.page-header {
+    background: linear-gradient(135deg, #0f2744 0%, #1e4080 100%);
     border-radius: 16px;
-    margin-bottom: 2rem;
+    padding: 36px 40px;
+    margin-bottom: 28px;
     position: relative;
     overflow: hidden;
 }
-.main-header::before {
-    content: '';
+.page-header::after {
+    content: '🏥';
     position: absolute;
-    top: -50%;
-    right: -10%;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle, rgba(64,196,255,0.08) 0%, transparent 70%);
-    border-radius: 50%;
+    right: 40px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 5rem;
+    opacity: 0.12;
 }
-.main-header h1 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2.4rem;
-    font-weight: 400;
-    margin: 0;
-    color: white;
-    letter-spacing: -0.5px;
+.header-tag {
+    background: rgba(96,165,250,0.2);
+    color: #93c5fd;
+    font-size: 0.68rem; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 4px 12px; border-radius: 20px;
+    border: 1px solid rgba(96,165,250,0.3);
+    display: inline-block; margin-bottom: 14px;
 }
-.main-header p {
-    font-size: 1rem;
-    color: rgba(255,255,255,0.65);
-    margin: 0.5rem 0 0 0;
-    font-weight: 300;
+.header-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.2rem; color: #ffffff;
+    margin: 0 0 8px 0; line-height: 1.2;
 }
-.header-badge {
-    display: inline-block;
-    background: rgba(64,196,255,0.15);
-    color: #40c4ff;
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 4px 12px;
-    border-radius: 20px;
-    border: 1px solid rgba(64,196,255,0.3);
-    margin-bottom: 1rem;
-}
+.header-sub { color: rgba(255,255,255,0.55); font-size: 0.92rem; margin: 0; font-weight: 300; }
 
-/* Agent pipeline cards */
-.agent-step {
-    background: white;
-    border-radius: 14px;
-    padding: 1.5rem 1.8rem;
-    margin: 1rem 0;
-    border-left: 4px solid #2196F3;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    transition: all 0.2s ease;
+.metric-box {
+    background: white; border-radius: 12px;
+    padding: 20px; text-align: center;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+    border-top: 3px solid #3b82f6;
 }
-.agent-step:hover {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    transform: translateY(-1px);
-}
-.agent-step.urgent { border-left-color: #f44336; }
-.agent-step.moderate { border-left-color: #ff9800; }
-.agent-step.low { border-left-color: #4caf50; }
+.metric-box.orange { border-top-color: #f97316; }
+.metric-box.green { border-top-color: #22c55e; }
+.metric-box.red { border-top-color: #ef4444; }
+.metric-num { font-size: 1.9rem; font-weight: 700; color: #1e293b; line-height: 1; margin-bottom: 6px; }
+.metric-num.orange { color: #ea580c; }
+.metric-num.green { color: #16a34a; }
+.metric-num.red { color: #dc2626; }
+.metric-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600; }
 
-.step-number {
-    background: #e8f4fd;
-    color: #1565c0;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 3px 10px;
-    border-radius: 20px;
-    display: inline-block;
-    margin-bottom: 0.6rem;
-}
-.agent-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #1a1f2e;
-    margin: 0.3rem 0;
-}
-.agent-content {
-    font-size: 0.92rem;
-    color: #3d4960;
-    line-height: 1.7;
-    margin-top: 0.6rem;
-    white-space: pre-wrap;
-}
-
-/* Urgency badge */
-.urgency-badge {
-    display: inline-block;
-    padding: 5px 14px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    margin-left: 0.5rem;
-}
-.urgency-low { background: #e8f5e9; color: #2e7d32; }
-.urgency-moderate { background: #fff3e0; color: #e65100; }
-.urgency-high { background: #fce4ec; color: #c62828; }
-.urgency-emergency { background: #f44336; color: white; animation: pulse 1.5s infinite; }
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
-}
-
-/* Diagnosis pills */
-.dx-pill {
-    display: inline-block;
-    background: #e3f2fd;
-    color: #0d47a1;
-    font-size: 0.82rem;
-    font-weight: 500;
-    padding: 4px 14px;
-    border-radius: 20px;
+.pills-wrap { margin: 0 0 24px 0; }
+.pill {
+    display: inline-block; background: #eff6ff;
+    color: #1d4ed8; border: 1px solid #bfdbfe;
+    border-radius: 20px; padding: 5px 14px;
+    font-size: 0.8rem; font-weight: 500;
     margin: 3px 4px 3px 0;
-    border: 1px solid #bbdefb;
 }
 
-/* Metric cards */
-.metric-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.2rem 1.5rem;
-    text-align: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+.result-card {
+    background: white; border-radius: 14px;
+    margin: 16px 0; overflow: hidden;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06);
 }
-.metric-value {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: #1565c0;
-    font-family: 'DM Serif Display', serif;
+.result-card-header {
+    padding: 16px 24px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fafbfc;
 }
-.metric-label {
-    font-size: 0.78rem;
-    color: #8a94a8;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-top: 0.3rem;
-    font-weight: 500;
+.step-badge {
+    background: #e0e7ff; color: #4338ca;
+    font-size: 0.65rem; font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 20px;
+    white-space: nowrap;
 }
+.step-badge.green { background: #dcfce7; color: #15803d; }
+.step-badge.orange { background: #fff7ed; color: #c2410c; }
+.step-badge.red { background: #fee2e2; color: #b91c1c; }
+.card-title { font-size: 1rem; font-weight: 600; color: #1e293b; margin: 0; }
+.result-card-body { padding: 20px 24px; color: #374151; font-size: 0.9rem; line-height: 1.8; }
 
-/* Progress indicator */
-.progress-container {
-    background: white;
-    border-radius: 14px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+.progress-wrap {
+    background: white; border-radius: 12px;
+    padding: 20px 24px; margin-bottom: 20px;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06);
 }
-.progress-step {
-    display: flex;
-    align-items: center;
-    padding: 0.5rem 0;
-    font-size: 0.88rem;
-    color: #8a94a8;
-}
-.progress-step.active { color: #1565c0; font-weight: 600; }
-.progress-step.done { color: #2e7d32; }
-.step-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #dde2ed;
-    margin-right: 10px;
-    flex-shrink: 0;
-}
-.step-dot.active { background: #2196f3; }
-.step-dot.done { background: #4caf50; }
+.prog-item { display: flex; align-items: center; padding: 7px 0; font-size: 0.85rem; color: #94a3b8; gap: 12px; }
+.prog-item.done { color: #16a34a; font-weight: 500; }
+.prog-item.active { color: #2563eb; font-weight: 600; }
+.prog-dot { width: 9px; height: 9px; border-radius: 50%; background: #e2e8f0; flex-shrink: 0; }
+.prog-dot.done { background: #22c55e; }
+.prog-dot.active { background: #3b82f6; }
 
-/* Disclaimer */
 .disclaimer {
-    background: #fff8e1;
-    border: 1px solid #ffe082;
-    border-radius: 10px;
-    padding: 1rem 1.4rem;
-    font-size: 0.84rem;
-    color: #5d4037;
-    margin-top: 1.5rem;
+    background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 10px; padding: 14px 20px;
+    font-size: 0.82rem; color: #78350f; margin-top: 20px;
 }
 
-/* Sidebar agent list */
-.agent-list-item {
-    background: rgba(255,255,255,0.06);
-    border-radius: 10px;
-    padding: 0.7rem 1rem;
-    margin: 0.4rem 0;
-    font-size: 0.85rem;
-    color: rgba(255,255,255,0.85) !important;
-    border-left: 3px solid rgba(64,196,255,0.4);
-}
-
-/* Hide Streamlit branding */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-.stDeployButton {visibility: hidden;}
-
-/* Buttons */
 .stButton > button {
-    background: linear-gradient(135deg, #1565c0, #1976d2);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    padding: 0.7rem 2rem;
-    font-family: 'DM Sans', sans-serif;
-    font-weight: 600;
-    font-size: 0.95rem;
-    letter-spacing: 0.3px;
-    width: 100%;
-    transition: all 0.2s ease;
+    background: #1d4ed8 !important; color: white !important;
+    border: none !important; border-radius: 10px !important;
+    padding: 10px 28px !important; font-weight: 600 !important;
+    font-size: 0.92rem !important; transition: all 0.2s !important;
 }
 .stButton > button:hover {
-    background: linear-gradient(135deg, #0d47a1, #1565c0);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(21,101,192,0.3);
+    background: #1e40af !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 14px rgba(29,78,216,0.35) !important;
 }
 
-/* Input fields */
-.stTextInput > div > div > input,
-.stTextArea > div > div > textarea {
-    border: 2px solid #e8edf5;
-    border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.95rem;
-    transition: border 0.2s;
-}
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-    border-color: #2196f3;
-    box-shadow: 0 0 0 3px rgba(33,150,243,0.1);
-}
+#MainMenu, footer, .stDeployButton { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -291,121 +157,93 @@ footer {visibility: hidden;}
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🏥 MedAgent AI")
-    st.markdown("*Healthcare Multi-Agent System*")
-    st.markdown("---")
-
-    st.markdown("### 🤖 Active Agents")
-    agents_info = [
-        ("🔬", "Symptom Checker", "Analyzes symptoms, identifies possible diagnoses & urgency"),
-        ("📚", "Medical Knowledge", "Deep-dives into each condition with clinical detail"),
-        ("💊", "Treatment Recommender", "Evidence-based treatment plans per diagnosis"),
-        ("📅", "Appointment Scheduler", "Routes to right specialist with dynamic scheduling"),
-        ("📋", "Follow-Up Coordinator", "Personalized recovery plans & monitoring reminders"),
+    st.caption("Healthcare Multi-Agent System")
+    st.divider()
+    st.markdown("**Active Agents**")
+    agents = [
+        ("🔬", "Symptom Checker", "Analyzes symptoms, identifies diagnoses & urgency"),
+        ("📚", "Medical Knowledge", "Deep-dives into each condition clinically"),
+        ("💊", "Treatment Recommender", "Evidence-based treatment plans"),
+        ("📅", "Appointment Scheduler", "Routes to right specialist dynamically"),
+        ("📋", "Follow-Up Coordinator", "Personalized recovery & monitoring plans"),
     ]
-    for icon, name, desc in agents_info:
-        st.markdown(f"""
-        <div class="agent-list-item">
-            <strong>{icon} {name}</strong><br>
-            <span style="font-size:0.78rem;opacity:0.7">{desc}</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("### ⚙️ System Info")
-    st.markdown("""
-    <div style="font-size:0.82rem; opacity:0.75;">
-    • <strong>Model:</strong> GPT-4o<br>
-    • <strong>Architecture:</strong> ReAct Loop<br>
-    • <strong>Agents:</strong> 5 Specialized<br>
-    • <strong>Tool Calls:</strong> XML-parsed<br>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("""
-    <div style="font-size:0.75rem; opacity:0.5; text-align:center;">
-    Built with OpenAI GPT-4o<br>
-    Not for medical diagnosis
-    </div>
-    """, unsafe_allow_html=True)
+    for icon, name, desc in agents:
+        st.markdown(f"""<div class="agent-card">
+            <div class="agent-card-name">{icon} {name}</div>
+            <div class="agent-card-desc">{desc}</div>
+        </div>""", unsafe_allow_html=True)
+    st.divider()
+    st.markdown("**System Info**")
+    st.markdown("""<div style="font-size:0.78rem;color:#64748b;line-height:2.2;">
+    • <strong style="color:#94a3b8">Model:</strong> Llama 3.3 70B (Groq)<br>
+    • <strong style="color:#94a3b8">Architecture:</strong> ReAct Loop<br>
+    • <strong style="color:#94a3b8">Agents:</strong> 5 Specialized<br>
+    • <strong style="color:#94a3b8">Tool Calls:</strong> XML-parsed
+    </div>""", unsafe_allow_html=True)
+    st.divider()
+    st.caption("⚠️ Not for medical diagnosis")
 
 
 # ─────────────────────────────────────────────
-# Main Header
+# Header
 # ─────────────────────────────────────────────
 st.markdown("""
-<div class="main-header">
-    <div class="header-badge">Multi-Agent AI System</div>
-    <h1>Healthcare Intelligence Platform</h1>
-    <p>5 specialized AI agents working in concert — from symptom analysis to follow-up care</p>
-</div>
-""", unsafe_allow_html=True)
+<div class="page-header">
+    <div class="header-tag">Multi-Agent AI System</div>
+    <div class="header-title">Healthcare Intelligence Platform</div>
+    <p class="header-sub">5 specialized AI agents — from symptom analysis to personalized follow-up care</p>
+</div>""", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
-# Patient Input Form
+# Input
 # ─────────────────────────────────────────────
-with st.container():
-    col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 2])
+with col1:
+    patient_name = st.text_input("👤 Patient Name", placeholder="e.g. John Doe")
+with col2:
+    symptoms = st.text_area("🩺 Describe Symptoms",
+        placeholder="e.g. High fever, severe cough, body aches and fatigue for the past 3 days...",
+        height=90)
 
-    with col1:
-        patient_name = st.text_input(
-            "👤 Patient Name",
-            placeholder="e.g. John Doe",
-            help="Enter the patient's full name"
-        )
+st.markdown("**Quick examples:**")
+c1, c2, c3, c4 = st.columns(4)
+examples = {
+    "🤧 Cold / Flu": ("Alex Smith", "High fever of 102F, severe cough, body aches, runny nose and fatigue for 3 days."),
+    "🤕 Migraine": ("Sarah Chen", "Severe throbbing headache on left side, nausea and sensitivity to light for 6 hours."),
+    "🤢 GI Issue": ("Mike Torres", "Stomach cramping, nausea, vomiting and diarrhea for the past 24 hours."),
+    "🦴 Joint Pain": ("Lisa Wong", "Swollen right knee, joint pain and morning stiffness over 30 minutes for 2 weeks."),
+}
+for col, (label, (name, symp)) in zip([c1, c2, c3, c4], examples.items()):
+    with col:
+        if st.button(label, key=label):
+            st.session_state["pre_name"] = name
+            st.session_state["pre_symp"] = symp
+            st.rerun()
 
-    with col2:
-        symptoms = st.text_area(
-            "🩺 Describe Symptoms",
-            placeholder="e.g. I have had a high fever (102°F), severe cough, body aches, and fatigue for the past 3 days. I also have a slight loss of taste.",
-            height=100,
-            help="Be as specific as possible — include duration, severity, and any associated symptoms"
-        )
+if "pre_name" in st.session_state:
+    patient_name = st.session_state["pre_name"]
+    symptoms = st.session_state["pre_symp"]
 
-    # Example symptoms buttons
-    st.markdown("**Quick examples:**")
-    ex_col1, ex_col2, ex_col3, ex_col4 = st.columns(4)
-    examples = {
-        "🤧 Cold/Flu": ("Alex Smith", "Fever, cough, body aches, runny nose, and fatigue for 3 days."),
-        "🤕 Migraine": ("Sarah Chen", "Severe throbbing headache on the left side, nausea, and sensitivity to light for 6 hours."),
-        "🤢 GI Issue": ("Mike Torres", "Stomach cramping, nausea, vomiting, and diarrhea for the past 24 hours."),
-        "💪 Joint Pain": ("Lisa Wong", "Swollen right knee, joint pain, and morning stiffness lasting over 30 minutes for 2 weeks."),
-    }
-    for col, (label, (name, symp)) in zip([ex_col1, ex_col2, ex_col3, ex_col4], examples.items()):
-        with col:
-            if st.button(label, key=f"ex_{label}"):
-                st.session_state["ex_name"] = name
-                st.session_state["ex_symp"] = symp
-                st.rerun()
-
-    # Apply example if clicked
-    if "ex_name" in st.session_state:
-        patient_name = st.session_state["ex_name"]
-        symptoms = st.session_state["ex_symp"]
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    run_btn = st.button("🚀 Run Healthcare Analysis", key="run")
+st.markdown("<br>", unsafe_allow_html=True)
+run = st.button("🚀 Run Healthcare Analysis")
 
 
 # ─────────────────────────────────────────────
 # Run Pipeline
 # ─────────────────────────────────────────────
-if run_btn:
+if run:
     if not patient_name.strip():
         st.warning("Please enter a patient name.")
     elif not symptoms.strip():
-        st.warning("Please describe the patient's symptoms.")
+        st.warning("Please describe the symptoms.")
     else:
-        # Clear previous example state
-        for k in ["ex_name", "ex_symp"]:
+        for k in ["pre_name", "pre_symp"]:
             st.session_state.pop(k, None)
 
-        st.markdown("---")
-        st.markdown("### ⚡ Running Agent Pipeline...")
+        st.divider()
+        st.markdown("### ⚡ Running Agent Pipeline")
 
-        # Progress display
-        progress_placeholder = st.empty()
         steps = [
             "🔬 Symptom Checker — analyzing symptoms...",
             "📚 Medical Knowledge — retrieving condition info...",
@@ -413,229 +251,163 @@ if run_btn:
             "📅 Appointment Scheduler — finding specialist availability...",
             "📋 Follow-Up Coordinator — creating care plan...",
         ]
+        prog_ph = st.empty()
 
-        def update_progress(current_step: int):
-            with progress_placeholder.container():
-                for i, step in enumerate(steps):
-                    status = "done" if i < current_step else ("active" if i == current_step else "")
-                    icon = "✅" if i < current_step else ("⏳" if i == current_step else "○")
-                    st.markdown(f"""
-                    <div class="progress-step {status}">
-                        <div class="step-dot {status}"></div>
-                        {icon} {step}
-                    </div>
-                    """, unsafe_allow_html=True)
+        def show_progress(current):
+            html = '<div class="progress-wrap">'
+            for i, s in enumerate(steps):
+                cls = "done" if i < current else ("active" if i == current else "")
+                icon = "✅" if i < current else ("⏳" if i == current else "○")
+                html += f'<div class="prog-item {cls}"><div class="prog-dot {cls}"></div>{icon} {s}</div>'
+            html += '</div>'
+            prog_ph.markdown(html, unsafe_allow_html=True)
 
-        update_progress(0)
-
-        # Monkey-patch coordinator to show live progress
-        coordinator = HealthcareCoordinator()
-
-        # Override run steps with progress updates
-        results = {"error": None}
         try:
-            with st.spinner(""):
-                # Step 1
-                update_progress(0)
-                diagnosis = coordinator.symptom_agent.run(symptoms)
-                urgency = coordinator._extract_urgency(diagnosis)
-                diagnoses = coordinator._extract_diagnoses(diagnosis)
+            coordinator = HealthcareCoordinator()
 
-                # Step 2
-                update_progress(1)
-                medical_knowledge = {}
-                for disease in diagnoses[:2]:
-                    info = coordinator.knowledge_agent.run(f"Tell me about {disease} in detail.")
-                    medical_knowledge[disease] = info
+            show_progress(0)
+            diagnosis = coordinator.symptom_agent.run(symptoms)
+            urgency = coordinator._extract_urgency(diagnosis)
+            diagnoses = coordinator._extract_diagnoses(diagnosis)
 
-                # Step 3
-                update_progress(2)
-                treatment_plans = {}
-                for disease in diagnoses[:2]:
-                    treatment = coordinator.treatment_agent.run(
-                        f"What is the treatment plan for a patient diagnosed with {disease}?"
-                    )
-                    treatment_plans[disease] = treatment
+            show_progress(1)
+            medical_knowledge = {}
+            for disease in diagnoses:
+                info = coordinator.knowledge_agent.run(f"Tell me about {disease} in detail.")
+                medical_knowledge[disease] = info
 
-                # Step 4
-                update_progress(3)
-                primary = diagnoses[0] if diagnoses else "General consultation"
-                appointment = coordinator.scheduler_agent.run(
-                    f"Schedule an appointment for '{patient_name}' diagnosed with '{primary}'. Urgency: '{urgency}'."
+            show_progress(2)
+            treatment_plans = {}
+            for disease in diagnoses:
+                treatment = coordinator.treatment_agent.run(
+                    f"What is the treatment plan for a patient diagnosed with {disease}?"
                 )
+                treatment_plans[disease] = treatment
 
-                # Step 5
-                update_progress(4)
-                followup = coordinator.followup_agent.run(
-                    f"Create a follow-up care plan for '{patient_name}' diagnosed with '{primary}'."
-                )
-
-                results = {
-                    "patient_name": patient_name,
-                    "symptoms": symptoms,
-                    "symptom_analysis": diagnosis,
-                    "urgency": urgency,
-                    "diagnoses": diagnoses,
-                    "medical_knowledge": medical_knowledge,
-                    "treatment_plans": treatment_plans,
-                    "appointment": appointment,
-                    "followup": followup,
-                    "error": None,
-                }
-
-        except Exception as e:
-            results["error"] = str(e)
-            st.error(f"Pipeline error: {e}")
-
-        progress_placeholder.empty()
-
-        if not results.get("error"):
-            # ── Summary Metrics ──────────────────────────────────────────
-            st.markdown("---")
-            st.markdown("### 📊 Analysis Summary")
-
-            urgency_color = {
-                "Low": "#4caf50", "Moderate": "#ff9800",
-                "High": "#f44336", "Emergency": "#b71c1c"
-            }.get(results["urgency"], "#2196f3")
-
-            m1, m2, m3, m4 = st.columns(4)
-            with m1:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value">{len(results['diagnoses'])}</div>
-                    <div class="metric-label">Possible Diagnoses</div>
-                </div>""", unsafe_allow_html=True)
-            with m2:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value" style="color:{urgency_color}">{results['urgency']}</div>
-                    <div class="metric-label">Urgency Level</div>
-                </div>""", unsafe_allow_html=True)
-            with m3:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value">5</div>
-                    <div class="metric-label">Agents Completed</div>
-                </div>""", unsafe_allow_html=True)
-            with m4:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value">✓</div>
-                    <div class="metric-label">Care Plan Ready</div>
-                </div>""", unsafe_allow_html=True)
-
-            # ── Diagnoses Pills ──────────────────────────────────────────
-            st.markdown("<br>", unsafe_allow_html=True)
-            pills_html = "".join([f'<span class="dx-pill">{d}</span>' for d in results["diagnoses"]])
-            st.markdown(f"**Possible Diagnoses:** {pills_html}", unsafe_allow_html=True)
-
-            st.markdown("---")
-
-            # ── Step 1: Symptom Analysis ─────────────────────────────────
-            urgency_class = results["urgency"].lower()
-            st.markdown(f"""
-            <div class="agent-step {urgency_class}">
-                <div class="step-number">Step 1 · Symptom Checker</div>
-                <div class="agent-title">🔬 Symptom Analysis Report</div>
-                <div class="agent-content">{results['symptom_analysis']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # ── Step 2: Medical Knowledge ────────────────────────────────
-            for disease, info in results["medical_knowledge"].items():
-                st.markdown(f"""
-                <div class="agent-step">
-                    <div class="step-number">Step 2 · Medical Knowledge</div>
-                    <div class="agent-title">📚 {disease}</div>
-                    <div class="agent-content">{info}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # ── Step 3: Treatment Plans ──────────────────────────────────
-            for disease, treatment in results["treatment_plans"].items():
-                st.markdown(f"""
-                <div class="agent-step">
-                    <div class="step-number">Step 3 · Treatment Plan</div>
-                    <div class="agent-title">💊 Treatment: {disease}</div>
-                    <div class="agent-content">{treatment}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # ── Step 4: Appointment ──────────────────────────────────────
-            st.markdown(f"""
-            <div class="agent-step">
-                <div class="step-number">Step 4 · Appointment Scheduler</div>
-                <div class="agent-title">📅 Appointment Confirmed</div>
-                <div class="agent-content">{results['appointment']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # ── Step 5: Follow-Up ────────────────────────────────────────
-            st.markdown(f"""
-            <div class="agent-step low">
-                <div class="step-number">Step 5 · Follow-Up Coordinator</div>
-                <div class="agent-title">📋 Personalized Care Plan</div>
-                <div class="agent-content">{results['followup']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # ── Download Report ──────────────────────────────────────────
-            st.markdown("---")
-            report_text = f"""HEALTHCARE MULTI-AGENT SYSTEM — PATIENT REPORT
-{'='*60}
-Patient: {results['patient_name']}
-Symptoms: {results['symptoms']}
-Urgency: {results['urgency']}
-Diagnoses: {', '.join(results['diagnoses'])}
-
-SYMPTOM ANALYSIS
-{'-'*40}
-{results['symptom_analysis']}
-
-MEDICAL KNOWLEDGE
-{'-'*40}
-"""
-            for disease, info in results["medical_knowledge"].items():
-                report_text += f"\n{disease}:\n{info}\n"
-
-            report_text += f"\nTREATMENT PLANS\n{'-'*40}\n"
-            for disease, treatment in results["treatment_plans"].items():
-                report_text += f"\n{disease}:\n{treatment}\n"
-
-            report_text += f"\nAPPOINTMENT\n{'-'*40}\n{results['appointment']}\n"
-            report_text += f"\nFOLLOW-UP PLAN\n{'-'*40}\n{results['followup']}\n"
-            report_text += f"\n{'='*60}\nDISCLAIMER: For informational purposes only. Not a substitute for professional medical advice.\n"
-
-            st.download_button(
-                label="📥 Download Full Report (.txt)",
-                data=report_text,
-                file_name=f"medical_report_{patient_name.replace(' ', '_')}.txt",
-                mime="text/plain",
+            show_progress(3)
+            primary = diagnoses[0] if diagnoses else "General consultation"
+            appointment = coordinator.scheduler_agent.run(
+                f"Schedule an appointment for '{patient_name}' diagnosed with '{primary}'. Urgency: '{urgency}'."
             )
 
-            # Disclaimer
-            st.markdown("""
-            <div class="disclaimer">
-            ⚠️ <strong>Medical Disclaimer:</strong> This system is for educational and informational purposes only. 
-            It does not constitute medical advice, diagnosis, or treatment. Always consult a qualified healthcare 
-            professional for medical concerns. In case of emergency, call <strong>911</strong> immediately.
-            </div>
-            """, unsafe_allow_html=True)
+            show_progress(4)
+            followup = coordinator.followup_agent.run(
+                f"Create a follow-up care plan for '{patient_name}' diagnosed with '{primary}'."
+            )
 
+            prog_ph.empty()
 
-# ─────────────────────────────────────────────
-# Empty state
-# ─────────────────────────────────────────────
-elif not run_btn:
-    st.markdown("""
-    <div style="text-align:center; padding: 3rem 2rem; color: #8a94a8;">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">🏥</div>
-        <div style="font-family: 'DM Serif Display', serif; font-size: 1.4rem; color: #3d4960; margin-bottom: 0.5rem;">
-            Ready to analyze
-        </div>
-        <div style="font-size: 0.9rem;">
-            Enter a patient name and describe their symptoms above, then click <strong>Run Healthcare Analysis</strong>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+            # Metrics
+            urgency_color = {"Low": "green", "Moderate": "orange", "High": "red", "Emergency": "red"}.get(urgency, "")
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.markdown(f"""<div class="metric-box">
+                    <div class="metric-num">{len(diagnoses)}</div>
+                    <div class="metric-label">Possible Diagnoses</div></div>""", unsafe_allow_html=True)
+            with m2:
+                st.markdown(f"""<div class="metric-box {urgency_color}">
+                    <div class="metric-num {urgency_color}">{urgency}</div>
+                    <div class="metric-label">Urgency Level</div></div>""", unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"""<div class="metric-box green">
+                    <div class="metric-num green">5</div>
+                    <div class="metric-label">Agents Completed</div></div>""", unsafe_allow_html=True)
+            with m4:
+                st.markdown(f"""<div class="metric-box green">
+                    <div class="metric-num green">✓</div>
+                    <div class="metric-label">Care Plan Ready</div></div>""", unsafe_allow_html=True)
+
+            # Pills
+            pills = "".join([f'<span class="pill">{d}</span>' for d in diagnoses])
+            st.markdown(f'<div class="pills-wrap"><strong>Identified Conditions:</strong><br><br>{pills}</div>',
+                        unsafe_allow_html=True)
+            st.divider()
+
+            # Step 1
+            badge = {"Low": "green", "Moderate": "orange", "High": "red", "Emergency": "red"}.get(urgency, "")
+            st.markdown(f"""<div class="result-card">
+                <div class="result-card-header">
+                    <span class="step-badge {badge}">Step 1 · Symptom Checker</span>
+                    <span class="card-title">🔬 Symptom Analysis Report</span>
+                </div>
+                <div class="result-card-body">{diagnosis.replace(chr(10), '<br>')}</div>
+            </div>""", unsafe_allow_html=True)
+
+            # Step 2
+            for disease, info in medical_knowledge.items():
+                st.markdown(f"""<div class="result-card">
+                    <div class="result-card-header">
+                        <span class="step-badge">Step 2 · Medical Knowledge</span>
+                        <span class="card-title">📚 {disease}</span>
+                    </div>
+                    <div class="result-card-body">{info.replace(chr(10), '<br>')}</div>
+                </div>""", unsafe_allow_html=True)
+
+            # Step 3
+            for disease, treatment in treatment_plans.items():
+                st.markdown(f"""<div class="result-card">
+                    <div class="result-card-header">
+                        <span class="step-badge orange">Step 3 · Treatment Plan</span>
+                        <span class="card-title">💊 {disease}</span>
+                    </div>
+                    <div class="result-card-body">{treatment.replace(chr(10), '<br>')}</div>
+                </div>""", unsafe_allow_html=True)
+
+            # Step 4
+            st.markdown(f"""<div class="result-card">
+                <div class="result-card-header">
+                    <span class="step-badge">Step 4 · Appointment Scheduler</span>
+                    <span class="card-title">📅 Appointment Confirmed</span>
+                </div>
+                <div class="result-card-body">{appointment.replace(chr(10), '<br>')}</div>
+            </div>""", unsafe_allow_html=True)
+
+            # Step 5
+            st.markdown(f"""<div class="result-card">
+                <div class="result-card-header">
+                    <span class="step-badge green">Step 5 · Follow-Up Coordinator</span>
+                    <span class="card-title">📋 Personalized Care Plan</span>
+                </div>
+                <div class="result-card-body">{followup.replace(chr(10), '<br>')}</div>
+            </div>""", unsafe_allow_html=True)
+
+            # Download
+            st.divider()
+            report = f"""MEDAGENT AI — PATIENT REPORT
+{'='*60}
+Patient: {patient_name}
+Symptoms: {symptoms}
+Urgency: {urgency}
+Diagnoses: {', '.join(diagnoses)}
+
+SYMPTOM ANALYSIS\n{'-'*40}\n{diagnosis}
+
+MEDICAL KNOWLEDGE\n{'-'*40}"""
+            for d, info in medical_knowledge.items():
+                report += f"\n{d}:\n{info}\n"
+            report += f"\nTREATMENT PLANS\n{'-'*40}\n"
+            for d, t in treatment_plans.items():
+                report += f"\n{d}:\n{t}\n"
+            report += f"\nAPPOINTMENT\n{'-'*40}\n{appointment}\n"
+            report += f"\nFOLLOW-UP PLAN\n{'-'*40}\n{followup}\n"
+            report += f"\n{'='*60}\nFor informational purposes only. Not a substitute for professional medical advice.\n"
+
+            st.download_button("📥 Download Full Report (.txt)", data=report,
+                file_name=f"report_{patient_name.replace(' ', '_')}.txt", mime="text/plain")
+
+            st.markdown("""<div class="disclaimer">
+            ⚠️ <strong>Medical Disclaimer:</strong> This system is for educational and informational purposes only.
+            It does not constitute medical advice, diagnosis, or treatment. Always consult a qualified healthcare
+            professional. In emergencies, call <strong>911</strong> immediately.
+            </div>""", unsafe_allow_html=True)
+
+        except Exception as e:
+            prog_ph.empty()
+            st.error(f"Pipeline error: {str(e)}")
+
+else:
+    st.markdown("""<div style="text-align:center;padding:4rem 2rem;color:#94a3b8;">
+        <div style="font-size:3.5rem;margin-bottom:1rem;">🏥</div>
+        <div style="font-size:1.3rem;font-weight:600;color:#475569;margin-bottom:8px;">Ready to analyze</div>
+        <div style="font-size:0.88rem;">Enter patient name and symptoms above, then click <strong>Run Healthcare Analysis</strong></div>
+    </div>""", unsafe_allow_html=True)
