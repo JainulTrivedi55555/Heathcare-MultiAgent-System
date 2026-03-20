@@ -3,8 +3,7 @@ import json
 import re
 import logging
 from typing import List, Dict, Callable, Any, Optional
-from openai import OpenAI
-
+from groq import Groq
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
@@ -42,10 +41,10 @@ class BaseAgent:
         self.conversation_history: List[Dict[str, str]] = []
         self.logger = logging.getLogger(name)
 
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
-            raise EnvironmentError("OPENAI_API_KEY environment variable is not set.")
-        self.client = OpenAI(api_key=api_key)
+            raise EnvironmentError("GROQ_API_KEY environment variable is not set.")
+        self.client = Groq(api_key=api_key)
 
     def _format_tools(self) -> str:
         if not self.tools:
@@ -62,7 +61,7 @@ class BaseAgent:
     def _call_llm(self, messages: List[Dict[str, str]]) -> str:
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="llama-3.3-70b-versatile",
                 messages=messages,
                 temperature=0.3,
                 max_tokens=600,
